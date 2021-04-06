@@ -5,10 +5,12 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <sys/ioctl.h>
 #include <pthread.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <signal.h>
+
 #define BUFFER_SIZE 2048
 
 // Unix Domain Socket Sniffer
@@ -135,6 +137,28 @@ int main(int argc, char *argv[]){
 	return 0;
 }
 
+int print_full_width(char * s) {
+	// Beautiful print
+
+	int len = strlen(s) ;
+	struct winsize w;
+	ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+
+
+	printf("\n");
+	for ( int i = 0 ; i < ((w.ws_col-len)/2)-1; i++ ) {
+		putchar('-');
+	}
+
+	printf(" %s ",s);
+
+	for ( i = 0 ; i < ((w.ws_col-len)/2)-1 ; i++ ) {
+		putchar('-');
+	}
+	printf("\n");
+	return 0;
+}
+
 void * connection_handler(void * sock_desc) {
 	// thread 
 	int sock = * (int*) sock_desc ;
@@ -156,28 +180,20 @@ void * connection_handler(void * sock_desc) {
 		close(spoofed_sock);
 	}
 
-	read_size = recv(sock, buf, BUFFER_SIZE,0 );
+	read_size = recv(sock, buf, BUFFER_SIZE, 0);
 
-	printf("--- nginx -> me ----\n");
+	print_full_width(argv[0]);
 	for (int i = 0; i < BUFFER_SIZE; i++) {
 		printf("%c", buf[i]);
 	}
 
-	printf("-------------------\n");
+	print_full_width("New Packet");
 
 	send(spoofed_sock, buf, BUFFER_SIZE, 0);
 
-	// nginx -> me -> spoofed socket
-
-	printf("writed\n") ;
-
 	memset(buf, 0, BUFFER_SIZE);
 
-	printf("received\n") ;
-	printf("---- me <- php-pfm ----\n");
-	// me < - spoofed socket
-	printf("---- nginx <- me ----\n");
-	printf("writed again\n") ;
+	print_full_width(socketName);
 
 	bytes_rec = recv(spoofed_sock, buf, BUFFER_SIZE, 0 );
 	for (int i = 0; i < BUFFER_SIZE; i++) {
