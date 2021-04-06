@@ -22,8 +22,10 @@ char **largs;
 char *socketName;
 int server_sock, len, rc;
 struct sockaddr_un spoofed_sockaddr;
+struct winsize w;
 
 void *connection_handler(void *);
+int print_full_width(char * s);
 
 void signal_handler(int signo) {
 	// If any signal is received the program will undo all changes
@@ -68,6 +70,8 @@ int main(int argc, char *argv[]){
 
 	printf("Unix Domain Socket Sniffer\n");
 	printf("by @caioluders\n");
+
+	ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 
 	// rename current socket to socket.1
 	char *socketName = (char*) malloc(strlen(argv[1]) + 3);
@@ -141,9 +145,6 @@ int print_full_width(char * s) {
 	// Beautiful print
 
 	int len = strlen(s) ;
-	struct winsize w;
-	ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-
 
 	printf("\n");
 	for ( int i = 0 ; i < ((w.ws_col-len)/2)-1; i++ ) {
@@ -182,7 +183,7 @@ void * connection_handler(void * sock_desc) {
 
 	read_size = recv(sock, buf, BUFFER_SIZE, 0);
 
-	print_full_width(largs[0]);
+	print_full_width(largs[1]);
 	for (int i = 0; i < BUFFER_SIZE; i++) {
 		printf("%c", buf[i]);
 	}
@@ -193,7 +194,7 @@ void * connection_handler(void * sock_desc) {
 
 	memset(buf, 0, BUFFER_SIZE);
 
-	print_full_width(socketName);
+	print_full_width(spoofed_sockaddr.sun_path);
 
 	bytes_rec = recv(spoofed_sock, buf, BUFFER_SIZE, 0 );
 	for (int i = 0; i < BUFFER_SIZE; i++) {
