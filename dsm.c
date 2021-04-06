@@ -100,7 +100,7 @@ int main(int argc, char *argv[]){
 		exit(1);
 	}
 
-	printf("[?] Bind spoofed socket %s\n",argv[1])
+	printf("[?] Bind spoofed socket %s\n",argv[1]);
 	// listen
 	rc = listen(server_sock, backlog);
 	if (rc == -1) {
@@ -152,7 +152,7 @@ int print_full_width(char * s) {
 
 	printf(" %s ",s);
 
-	for ( i = 0 ; i < ((w.ws_col-len)/2)-1 ; i++ ) {
+	for ( int i = 0 ; i < ((w.ws_col-len)/2)-1 ; i++ ) {
 		putchar('-');
 	}
 	printf("\n");
@@ -182,7 +182,7 @@ void * connection_handler(void * sock_desc) {
 
 	read_size = recv(sock, buf, BUFFER_SIZE, 0);
 
-	print_full_width(argv[0]);
+	print_full_width(largs[0]);
 	for (int i = 0; i < BUFFER_SIZE; i++) {
 		printf("%c", buf[i]);
 	}
