@@ -49,7 +49,7 @@ int main(int argc, char *argv[]){
 	int backlog = 10;
 
 	if (argc <= 1) {
-		perror("Need filename\n");
+		perror("[!] Need socket name\n");
 		exit(1);
 	}
 
@@ -72,8 +72,7 @@ int main(int argc, char *argv[]){
 	strcpy(socketName, argv[1]);
 	strcat(socketName, ".1\0");
 
-	printf("%s\n", socketName);
-	printf("%s\n", argv[1]);
+	printf("[?] Renamed %s to %s\n", argv[1], socketName);
 
 	rename(argv[1], socketName);
 
@@ -99,6 +98,7 @@ int main(int argc, char *argv[]){
 		exit(1);
 	}
 
+	printf("[?] Bind spoofed socket %s\n",argv[1])
 	// listen
 	rc = listen(server_sock, backlog);
 	if (rc == -1) {
@@ -106,12 +106,12 @@ int main(int argc, char *argv[]){
 		close(server_sock);
 		exit(1);
 	}
-	printf("socket listening...\n");
+	printf("[?] Spoofed socket is listening...\n");
 
 
 	while (  ( client_sock = accept(server_sock, (struct sockaddr *) &server_sockaddr, &len) ) ) {
 		
-		printf("new connection\n");
+		printf("[?] New connection\n");
 
 		pthread_t sniffer_thread;
 		new_sock = malloc(1) ;
@@ -119,7 +119,7 @@ int main(int argc, char *argv[]){
 
 		// new thread to handle the new connection
 		if ( pthread_create( &sniffer_thread , NULL , connection_handler , (void*) new_sock ) < 0 ) {
-			perror("could not create thread");
+			perror("[!] Could not create thread");
 			return 1; 
 		}
 
@@ -127,7 +127,7 @@ int main(int argc, char *argv[]){
 	}
 
 	if ( client_sock < 0 ) {
-		perror("accept failed");
+		perror("[!] Accept failed");
 		return 1;
 	}
 
@@ -146,19 +146,19 @@ void * connection_handler(void * sock_desc) {
 	// send to real socket
 	spoofed_sock = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (spoofed_sock == -1) {
-		printf("SOCKET ERROR\n");
+		printf("[!] SOCKET ERROR\n");
 		exit(-1);
 	}
 
 	rc = connect(spoofed_sock, (struct sockaddr *) &spoofed_sockaddr, strlen(spoofed_sockaddr.sun_path) + sizeof(spoofed_sockaddr.sun_family));
 	if (rc == -1) {
-		printf("CONNECT ERROR\n");
+		printf("[!] CONNECT ERROR\n");
 		close(spoofed_sock);
 	}
 
 	read_size = recv(sock, buf, BUFFER_SIZE,0 );
 
-	printf("---- nginx -> me ----\n");
+	printf("--- nginx -> me ----\n");
 	for (int i = 0; i < BUFFER_SIZE; i++) {
 		printf("%c", buf[i]);
 	}
