@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <signal.h>
+#include <getopt.h>
 
 #define BUFFER_SIZE 2048
 
@@ -35,6 +36,12 @@ void signal_handler(int signo) {
 	exit(1);
 }
 
+// args :
+// --replace : replace a string on every answer
+// --redirect : redirect the connections to another socket
+// --static : static raw answer to all requests
+
+
 int main(int argc, char *argv[]){
 
 	int client_sock, *new_sock;
@@ -50,13 +57,63 @@ int main(int argc, char *argv[]){
 
 	int backlog = 10;
 
+	int c;
+	int option_index = 0;
+
+	static struct option long_options[] = {
+		{"replace", required_argument, NULL, 'r'},
+		{"proxy", required_argument, NULL, 'p'},
+		{"static", required_argument, NULL, 's'},
+		{"help", no_argument, NULL, 'h'},
+		{ 0 }
+	};
+
+
+	while ( (c = getopt_long(argc, argv, "hr:s:p:", long_options, &option_index) ) != -1 ) {
+
+		switch (c) {
+			case 'h':
+				const char *basename = strrchr(argv[0], '/');
+			    basename = basename ? basename + 1 : argv[0];
+
+				printf("Usage: %s SOCKET [OPTION]\n",basename);
+				printf("Unix Domain Socket tool to achieve local MiTM, can sniff and alter every connection on a given socket.\n\n");
+				printf("	-r, --replace=STRING1,STRING2\t\tReplace STRING1 with STRING2 on EVERY response. Separate strings with a comma.\n");
+				printf("	-p, --proxy=SOCKET\t\t\tProxy every request to a different socket.\n");
+				printf("	-s, --static=FILENAME\t\t\tAnswer every request with a RAW response from a file.\n");
+				printf("	-h, --help\t\t\t\tPrint this help and exit.");
+				return 0;
+			case 'p':
+				printf("proxy option");
+				if (optarg)
+				 printf(" with arg %s", optarg);
+				printf("\n");
+				break;
+			case 'r':
+				printf("replace option");
+				if (optarg)
+				 printf(" with arg %s", optarg);
+				printf("\n");
+				break;
+			case 's':
+				printf("static option");
+				if (optarg)
+				 printf(" with arg %s", optarg);
+				printf("\n");
+				break;	
+			default:
+				printf("?? getopt returned character code 0%o ??\n", c);
+		}
+
+	}
+
 	if (argc <= 1) {
 		perror("[!] Need socket name\n");
 		exit(1);
 	}
 
 	if (access(argv[1], F_OK) != 0) {
-		perror("");
+		perror("[!] No such Socket");
 		exit(1);
 	}
 
@@ -66,7 +123,7 @@ int main(int argc, char *argv[]){
 	memset(&server_sockaddr, 0, sizeof(struct sockaddr_un));
 	memset(&client_sockaddr, 0, sizeof(struct sockaddr_un));
 
-	printf("Unix Domain Socket Sniffer\n");
+	printf("Unix Domain Socket MiTM\n");
 	printf("by @caioluders\n");
 
 	// rename current socket to socket.1
@@ -182,7 +239,7 @@ void * connection_handler(void * sock_desc) {
 
 	read_size = recv(sock, buf, BUFFER_SIZE, 0);
 
-	print_full_width(largs[0]);
+	print_full_width(largs[1]);
 	for (int i = 0; i < BUFFER_SIZE; i++) {
 		printf("%c", buf[i]);
 	}
