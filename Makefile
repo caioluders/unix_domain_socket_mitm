@@ -1,4 +1,4 @@
 CC=gcc
 
 udsmitm: udsmitm.c
-	$(CC) -pthread udsmitm.c -o udsmitm 
+	$(CC) -pthread -static udsmitm.c -o udsmitm 

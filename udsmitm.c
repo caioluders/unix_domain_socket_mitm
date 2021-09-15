@@ -12,30 +12,90 @@
 #include <signal.h>
 #include <getopt.h>
 
-#define BUFFER_SIZE 2048
+#define BUFFER_SIZE 32768
 
-// Unix Domain Socket Sniffer
+// Unix Domain Socket MiTM
 // this script should automatize this answer https://superuser.com/a/576404
 // and is heavily based on https://www.ibm.com/support/knowledgecenter/SSB23S_1.1.0.2020/gtpc1/unixsock.html
 // by @caioluders
 
-char **largs;
+char *largs;
 char *socketName;
 int server_sock, len, rc;
 struct sockaddr_un spoofed_sockaddr;
 struct winsize w;
+char r1_str[1024];
+char r2_str[1024];
+int replace_i = 0;
 
 void *connection_handler(void *);
 int print_full_width(char * s);
 
 void signal_handler(int signo) {
 	// If any signal is received the program will undo all changes
-	unlink(largs[1]);
-	char *socketName = (char*) malloc(strlen(largs[1]) + 3);
-	strcpy(socketName, largs[1]);
+	unlink(largs);
+	char *socketName = (char*) malloc(strlen(largs) + 3);
+	strcpy(socketName, largs);
 	strcat(socketName, ".1");
-	rename(socketName, largs[1]);
+	rename(socketName, largs);
 	exit(1);
+}
+
+int print_full_width(char * s) {
+	// Beautiful print
+
+	int len = strlen(s) ;
+
+	printf("\n");
+	for ( int i = 0 ; i < ((w.ws_col-len)/2)-1; i++ ) {
+		putchar('-');
+	}
+
+	printf(" %s ",s);
+
+	for ( int i = 0 ; i < ((w.ws_col-len)/2)-1 ; i++ ) {
+		putchar('-');
+	}
+	printf("\n");
+	return 0;
+}
+
+char * strreplace( char * buf , char * s1, char * s2 ) {
+	char * s1_buf_pointer = strstr( buf , s1 ) ;
+
+	printf("strstr %d",buf[0]);
+
+	if ( s1_buf_pointer == NULL )
+		return buf;
+	
+	int s1_buf_i = (int) ( s1_buf_pointer - buf );
+
+	char *new_buf = malloc( sizeof(char) * BUFFER_SIZE );
+
+	int j = 0 ;
+
+	for ( int i = 0 ; i < BUFFER_SIZE; i++ ) {
+
+		if ( buf[i-j] == '\0' ) {
+			break;
+		}
+
+		if ( i == s1_buf_i ) {
+			for ( j = 0; j < strlen(s2); j++ ) {
+				new_buf[i+j] = s2[j]; 
+			}
+			i = i + (strlen(s2)-1) ;
+
+		} else {
+			if ( j > 0 ) {
+				new_buf[i] = buf[s1_buf_i+strlen(s1)+(i-strlen(s2)-s1_buf_i)];	
+			} else {
+				new_buf[i] = buf[i];
+			}
+		}
+	}
+
+	return new_buf;
 }
 
 // args :
@@ -48,15 +108,6 @@ int main(int argc, char *argv[]){
 
 	int client_sock, *new_sock;
 	struct sockaddr_un server_sockaddr, client_sockaddr, peer_sockaddr;
-
-	signal(SIGHUP, signal_handler);
-	signal(SIGKILL, signal_handler);
-	signal(SIGSTOP, signal_handler);
-	signal(SIGUSR1, signal_handler);
-	signal(SIGINT, signal_handler);
-	signal(SIGABRT, signal_handler);
-	signal(SIGPIPE, signal_handler);
-
 	int backlog = 10;
 
 	int c;
@@ -70,20 +121,48 @@ int main(int argc, char *argv[]){
 		{ 0 }
 	};
 
+	signal(SIGHUP, signal_handler);
+	signal(SIGKILL, signal_handler);
+	signal(SIGSTOP, signal_handler);
+	signal(SIGUSR1, signal_handler);
+	signal(SIGINT, signal_handler);
+	signal(SIGABRT, signal_handler);
+	signal(SIGPIPE, signal_handler);
+
+
+	printf("Unix Domain Socket MiTM\n");
+	printf("by @caioluders\n");
+	
+
+	if (argc <= 1) {
+		perror("[!] Need socket name\n");
+		exit(1);
+	}
+
+	printf("%s",argv[1]);
+
+	if (access(argv[1], F_OK) != 0) {
+		perror("[!] No such Socket");
+		exit(1);
+	}
+
+
+	char * first_socket = (char*) malloc( strlen(argv[1])  + 3);
+	strcpy( first_socket , argv[1] );
 
 	while ( (c = getopt_long(argc, argv, "hr:s:p:", long_options, &option_index) ) != -1 ) {
 
 		switch (c) {
 			case 'h':
 				const char *basename = strrchr(argv[0], '/');
-			    basename = basename ? basename + 1 : argv[0];
+				basename = basename ? basename + 1 : argv[0];
 
 				printf("Usage: %s SOCKET [OPTION]\n",basename);
 				printf("Unix Domain Socket tool to achieve local MiTM, can sniff and alter every connection on a given socket.\n\n");
-				printf("	-r, --replace=STRING1,STRING2\t\tReplace STRING1 with STRING2 on EVERY response. Separate strings with a comma.\n");
+				printf("	-r, --replace=STRING1 --replace=STRING2\tReplace STRING1 with STRING2 on EVERY response.\n");
 				printf("	-p, --proxy=SOCKET\t\t\tProxy every request to a different socket.\n");
 				printf("	-s, --static=FILENAME\t\t\tAnswer every request with a RAW response from a file.\n");
-				printf("	-h, --help\t\t\t\tPrint this help and exit.");
+				printf("	-h, --help\t\t\t\tPrint this help and exit.\n");
 				return 0;
 			case 'p':
 				printf("proxy option");
@@ -92,10 +171,15 @@ int main(int argc, char *argv[]){
 				printf("\n");
 				break;
 			case 'r':
-				printf("replace option");
-				if (optarg)
-				 printf(" with arg %s", optarg);
-				printf("\n");
+				if (optarg) {
+					if ( replace_i == 0 ) {
+						strcpy( r1_str, optarg );
+						replace_i = 1;	
+					} else {
+						strcpy( r2_str, optarg );
+						replace_i = 2;
+					}
+				}
 				break;
 			case 's':
 				printf("static option");
@@ -109,35 +193,27 @@ int main(int argc, char *argv[]){
 
 	}
 
-	if (argc <= 1) {
-		perror("[!] Need socket name\n");
+	if ( replace_i == 1) {
+		perror("[!] Needs second 'replace' option\n");
 		exit(1);
 	}
 
-	if (access(argv[1], F_OK) != 0) {
-		perror("[!] No such Socket");
-		exit(1);
-	}
-
-	largs = argv;
+	largs = first_socket;
 
 	memset(&spoofed_sockaddr, 0, sizeof(struct sockaddr_un));
 	memset(&server_sockaddr, 0, sizeof(struct sockaddr_un));
 	memset(&client_sockaddr, 0, sizeof(struct sockaddr_un));
 
-	printf("Unix Domain Socket MiTM\n");
-	printf("by @caioluders\n");
-
 	ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 
 	// rename current socket to socket.1
-	char *socketName = (char*) malloc(strlen(argv[1]) + 3);
-	strcpy(socketName, argv[1]);
+	char *socketName = (char*) malloc(strlen(first_socket) + 3);
+	strcpy(socketName, first_socket);
 	strcat(socketName, ".1\0");
 
-	printf("[?] Renamed %s to %s\n", argv[1], socketName);
+	printf("[?] Renamed %s to %s\n", first_socket, socketName);
 
-	rename(argv[1], socketName);
+	rename(first_socket, socketName);
 
 	// create new socket
 	server_sock = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -149,9 +225,9 @@ int main(int argc, char *argv[]){
 	spoofed_sockaddr.sun_family = AF_UNIX;
 	strcpy(spoofed_sockaddr.sun_path, socketName);
 
-	strcat(argv[1],"\0");
+	strcat(first_socket,"\0");
 	server_sockaddr.sun_family = AF_UNIX;
-	strcpy(server_sockaddr.sun_path, argv[1]);
+	strcpy(server_sockaddr.sun_path, first_socket);
 	len = sizeof(server_sockaddr);
 
 	rc = bind(server_sock, (struct sockaddr *) &server_sockaddr, len);
@@ -161,7 +237,7 @@ int main(int argc, char *argv[]){
 		exit(1);
 	}
 
-	printf("[?] Bind spoofed socket %s\n",argv[1]);
+	printf("[?] Bind spoofed socket %s\n", first_socket);
 	// listen
 	rc = listen(server_sock, backlog);
 	if (rc == -1) {
@@ -198,24 +274,7 @@ int main(int argc, char *argv[]){
 	return 0;
 }
 
-int print_full_width(char * s) {
-	// Beautiful print
 
-	int len = strlen(s) ;
-
-	printf("\n");
-	for ( int i = 0 ; i < ((w.ws_col-len)/2)-1; i++ ) {
-		putchar('-');
-	}
-
-	printf(" %s ",s);
-
-	for ( int i = 0 ; i < ((w.ws_col-len)/2)-1 ; i++ ) {
-		putchar('-');
-	}
-	printf("\n");
-	return 0;
-}
 
 void * connection_handler(void * sock_desc) {
 	// thread 
@@ -223,7 +282,7 @@ void * connection_handler(void * sock_desc) {
 	int read_size, rs2, spoofed_sock ;
 	int bytes_rec = 0;
 	char * message, client_message[BUFFER_SIZE] ;
-	char buf[2048];
+	char * buf = (char*) malloc( sizeof(char) *BUFFER_SIZE);
 
 	// send to real socket
 	spoofed_sock = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -240,7 +299,7 @@ void * connection_handler(void * sock_desc) {
 
 	read_size = recv(sock, buf, BUFFER_SIZE, 0);
 
-	print_full_width(largs[1]);
+	print_full_width(largs);
 	for (int i = 0; i < BUFFER_SIZE; i++) {
 		printf("%c", buf[i]);
 	}
@@ -257,7 +316,13 @@ void * connection_handler(void * sock_desc) {
 	for (int i = 0; i < BUFFER_SIZE; i++) {
 		printf("%c",buf[i]);
 	}
+
+	if ( replace_i == 2 ) {
+		strcpy( buf, strreplace( buf , r1_str, r2_str ));
+	}
+
 	send(sock, buf, BUFFER_SIZE, 0);
+
 
 	shutdown(sock,SHUT_RDWR);
 	shutdown(spoofed_sock,SHUT_RDWR);
