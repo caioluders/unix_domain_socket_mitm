@@ -12,7 +12,7 @@
 #include <signal.h>
 #include <getopt.h>
 
-#define BUFFER_SIZE 32768
+#define BUFFER_SIZE 327684
 
 // Unix Domain Socket MiTM
 // this script should automatize this answer https://superuser.com/a/576404
@@ -27,6 +27,11 @@ struct winsize w;
 char r1_str[1024];
 char r2_str[1024];
 int replace_i = 0;
+char * socket_redirect ;
+int redirect_flag = 0;
+int static_file_flag = 0;
+char socket_static_file[BUFFER_SIZE] ;
+
 
 void *connection_handler(void *);
 int print_full_width(char * s);
@@ -98,12 +103,6 @@ char * strreplace( char * buf , char * s1, char * s2 ) {
 	return new_buf;
 }
 
-// args :
-// --replace : replace a string on every answer
-// --redirect : redirect the connections to another socket
-// --static : static raw answer to all requests
-
-
 int main(int argc, char *argv[]){
 
 	int client_sock, *new_sock;
@@ -166,9 +165,12 @@ int main(int argc, char *argv[]){
 				return 0;
 			case 'p':
 				printf("proxy option");
-				if (optarg)
-				 printf(" with arg %s", optarg);
-				printf("\n");
+				if (optarg) {
+					socket_redirect = (char*) malloc(strlen(optarg));
+					strcpy(socket_redirect, optarg);
+					redirect_flag = 1;
+				}
+					
 				break;
 			case 'r':
 				if (optarg) {
@@ -183,9 +185,20 @@ int main(int argc, char *argv[]){
 				break;
 			case 's':
 				printf("static option");
-				if (optarg)
-				 printf(" with arg %s", optarg);
-				printf("\n");
+				if (optarg) {
+					if (access( optarg, F_OK) != 0){
+						perror("[!] No such file!\n");
+						exit(1);
+					}
+					static_file_flag = 1;
+					FILE *fp = fopen(optarg, "r");
+					fseek(fp, 0, SEEK_END);
+					int file_size = ftell(fp);
+					fseek(fp, 0, SEEK_SET);
+					size_t newLen = fread(socket_static_file, sizeof(char),file_size, fp);
+					fclose(fp);
+					printf("%s\n",socket_static_file);
+				}
 				break;	
 			default:
 				printf("?? getopt returned character code 0%o ??\n", c);
@@ -312,7 +325,12 @@ void * connection_handler(void * sock_desc) {
 
 	print_full_width(spoofed_sockaddr.sun_path);
 
-	bytes_rec = recv(spoofed_sock, buf, BUFFER_SIZE, 0 );
+	if ( static_file_flag == 1 ){
+		strcpy( buf, socket_static_file );
+	} else {
+		bytes_rec = recv(spoofed_sock, buf, BUFFER_SIZE, 0 );
+	}
+
 	for (int i = 0; i < BUFFER_SIZE; i++) {
 		printf("%c",buf[i]);
 	}
