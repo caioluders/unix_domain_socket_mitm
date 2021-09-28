@@ -132,20 +132,6 @@ int main(int argc, char *argv[]){
 	printf("Unix Domain Socket MiTM\n");
 	printf("by @caioluders\n");
 	
-
-	if (argc <= 1) {
-		perror("[!] Need socket name\n");
-		exit(1);
-	}
-
-	printf("%s",argv[1]);
-
-	if (access(argv[1], F_OK) != 0) {
-		perror("[!] No such Socket");
-		exit(1);
-	}
-
-
 	char * first_socket = (char*) malloc( strlen(argv[1])  + 3);
 	strcpy( first_socket , argv[1] );
 
@@ -236,8 +222,11 @@ int main(int argc, char *argv[]){
 	}
 
 	spoofed_sockaddr.sun_family = AF_UNIX;
-	strcpy(spoofed_sockaddr.sun_path, socketName);
-
+	if ( redirect_flag == 1 ) {
+		strcpy(spoofed_sockaddr.sun_path, socket_redirect);
+	} else { 
+		strcpy(spoofed_sockaddr.sun_path, socketName);
+	}
 	strcat(first_socket,"\0");
 	server_sockaddr.sun_family = AF_UNIX;
 	strcpy(server_sockaddr.sun_path, first_socket);
